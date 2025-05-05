@@ -1,7 +1,8 @@
 #include "common.h" /*Lo usamos solo para imprimir en pantalla*/
 
 BEGIN
-    CLEAR
+    .code16
+    cli
     
     /* ENTRAMOS AL MODO PROTEGIDO*/
     
@@ -22,28 +23,6 @@ BEGIN
 
     /*ACA YA ESTAMOS EN MODO PROTEGIDO, EL RESTO ES CONFIGURACIÓN DE SEGMENTO DE LA MEMORIA*/
 
-
-    /* Our GDT contains:
-     *
-     * * a null entry to fill the unusable entry 0:
-     * http://stackoverflow.com/questions/33198282/why-have-the-first-segment-descriptor-of-the-global-descriptor-table-contain-onl
-     * * a code and data. Both are necessary, because:
-     * +
-     * --
-     * ** it is impossible to write to the code segment
-     * ** it is impossible execute the data segment
-     * --
-     * +
-     * Both start at 0 and span the entire memory,
-     * allowing us to access anything without problems.
-     *
-     * A real OS might have 2 extra segments: user data and code.
-     *
-     * This is the case for the Linux kernel.
-     *
-     * This is better than modifying the privilege bit of the GDT
-     * as we'd have to reload it several times, losing cache.
-     */
     gdt_start:
     gdt_null:
         .long 0x0
@@ -68,26 +47,59 @@ BEGIN
         .long gdt_start
     vga_current_line:
         .long 0
+    
     .code32
     protected_mode:
-        /* Setup the other segments.
-         * Those movs are mandatory because they update the descriptor cache:
-         * http://wiki.osdev.org/Descriptor_Cache
-         */
+        /* Configuramos los otros segmentos*/
         mov $DATA_SEG, %ax
         mov %ax, %ds
         mov %ax, %es
         mov %ax, %fs
         mov %ax, %gs
         mov %ax, %ss
-        /* TODO detect the last memory address available properly.
-         * It depends on how much RAM we have.
-         */
+
         mov $0X7000, %ebp
         mov %ebp, %esp
 
 
-    VGA_PRINT_STRING $message
-    jmp .
-message:
-    .asciz "hello world, de parte de NullPointerException"
+
+        push %eax
+        push %ebx
+        push %ecx
+        push %edx
+
+        mov $message, %ecx
+        mov vga_current_line, %eax
+        mov $0, %edx
+
+        mov $25, %ebx
+        div %ebx
+        mov %edx, %eax
+
+        mov $160, %edx
+        mul %edx
+        /* 0xb8000 == VGA BUFFER */
+        lea 0xb8000(%eax), %edx
+        mov $0x0f, %ah
+
+    loop:
+        mov (%ecx), %al
+        cmp $0, %al
+        je end
+        mov %ax, (%edx)
+        add $1, %ecx
+        add $2, %edx
+        jmp loop
+    end:
+        incl vga_current_line
+
+        pop %edx
+        pop %ecx
+        pop %ebx
+        pop %eax
+
+        jmp .
+
+        /* Fin VGA_PRINT_STRING */
+    message:
+        .asciz "hello world, de parte de NullPointerException"
